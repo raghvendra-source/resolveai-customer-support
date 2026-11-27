@@ -19,7 +19,6 @@ const LOCAL_DB = 'mongodb://127.0.0.1:27017/resolveai';
 const MONGO_URI = process.env.MONGODB_URI || (process.env.NODE_ENV === 'production' ? '' : LOCAL_DB);
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'resolveai-local-development-secret-change-this');
 const allowedOrigins = new Set([process.env.FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'].filter(Boolean));
-let databaseError = '';
 
 app.disable('x-powered-by');
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -28,11 +27,10 @@ app.use(express.json({ limit: '40kb' }));
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }));
 app.use('/api/ai', rateLimit({ windowMs: 60_000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false }));
 
-mongoose.connection.on('error', e => { databaseError = e.message; console.error('MongoDB connection error:', e.name || 'connection failure'); });
-if (!MONGO_URI) databaseError = 'Set MONGODB_URI before starting the production server.';
-else mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 6000 }).then(() => { databaseError = ''; console.log(`MongoDB connected (${process.env.MONGODB_URI ? 'configured URI' : 'local development database'}).`); }).catch(e => { databaseError = e.message; console.error('MongoDB unavailable:', e.name || 'connection failure'); });
+mongoose.connection.on('error', e => { console.error('MongoDB connection error:', e.name || 'connection failure'); });
+if (MONGO_URI) mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 6000 }).then(() => { console.log(`MongoDB connected (${process.env.MONGODB_URI ? 'configured URI' : 'local development database'}).`); }).catch(e => { console.error('MongoDB unavailable:', e.name || 'connection failure'); });
 
-const dbRequired = (req, res, next) => mongoose.connection.readyState === 1 ? next() : res.status(503).json({ error: 'Database is not connected. Check MongoDB and MONGODB_URI.', detail: process.env.NODE_ENV === 'production' ? undefined : databaseError });
+const dbRequired = (req, res, next) => mongoose.connection.readyState === 1 ? next() : res.status(503).json({ error: 'Database is not connected. Check the local MongoDB service or backend MONGODB_URI.' });
 const sign = user => jwt.sign({ sub: user._id.toString(), role: user.role }, JWT_SECRET, { expiresIn: '12h' });
 const publicUser = u => ({ id: u._id, name: u.name, email: u.email, role: u.role, active: u.active, demo: u.demo });
 const auth = async (req, res, next) => {
